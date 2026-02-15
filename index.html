@@ -5,121 +5,232 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Dodos</title>
 <style>
-body{
-  margin:0; min-height:100vh;
-  display:grid; place-items:center;
-  font-family: system-ui, sans-serif;
-  background:#ffffff;
-}
-.card{
-  width:min(600px,90%);
-  border:2px solid #000;
-  border-radius:20px;
-  padding:24px;
-  box-shadow:6px 6px 0 #000;
-}
-h1{ margin:0 0 10px; font-size:20px;}
-.big{
-  font-size:clamp(48px,8vw,72px);
-  font-weight:900;
-  margin:10px 0;
-}
-.sub{ font-size:14px; opacity:.8;}
-.line{
-  margin-top:16px;
-  display:flex; gap:10px; flex-wrap:wrap;
-}
-input,button{
-  font:inherit;
-  padding:10px 12px;
-  border-radius:14px;
-  border:2px solid #000;
-  background:#fff;
-}
-button{ cursor:pointer; box-shadow:3px 3px 0 #000;}
-button:active{ transform:translate(1px,1px); box-shadow:2px 2px 0 #000;}
-.mono{
-  font-family:monospace;
-  font-size:16px;
-  border:2px dashed #000;
-  border-radius:12px;
-  padding:8px 10px;
-  display:inline-block;
-  margin-top:6px;
-}
+  body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,sans-serif;background:#fff}
+  .card{width:min(720px,calc(100% - 28px));border:2px solid #111;border-radius:22px;padding:22px;box-shadow:6px 6px 0 #111}
+  h1{margin:0 0 10px;font-size:20px}
+  .bubble{display:inline-flex;align-items:center;gap:10px;padding:10px 12px;border:2px solid #111;border-radius:999px;background:#fff7cc;font-weight:800}
+  .big{margin:14px 0 6px;font-size:clamp(44px,7vw,72px);font-weight:900;letter-spacing:-1px;line-height:1}
+  .sub{margin:0 0 14px;font-size:14px;opacity:.8}
+  .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:16px;padding:10px 12px;border:2px dashed #111;border-radius:16px;display:inline-block;background:#f6f6f6}
+  .line{margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  input,button{font:inherit;padding:10px 12px;border-radius:14px;border:2px solid #111;background:#fff}
+  button{cursor:pointer;box-shadow:3px 3px 0 #111}
+  button:active{transform:translate(1px,1px);box-shadow:2px 2px 0 #111}
+  .tiny{margin-top:12px;font-size:12px;opacity:.75;word-break:break-word}
+  code{font-family:ui-monospace,Menlo,Consolas,monospace}
 </style>
 </head>
 <body>
 <div class="card">
-  <h1>🧸 Compte à rebours en dodos</h1>
+  <h1 id="title">🧸 Compte à rebours en dodos</h1>
+  <div class="bubble">✨ <span id="labelTxt">Un petit dodo avant…</span></div>
 
-  <div class="big"><span id="dodos">—</span> dodos</div>
-  <div class="mono" id="hms">—</div>
+  <div class="big"><span id="dodos">—</span> <span id="dodoUnit">dodos</span></div>
+  <p class="sub">Même durée, version horloge : <span class="mono" id="hms">—</span></p>
 
   <div class="line">
     <input type="date" id="date"/>
     <input type="time" id="time" step="1" value="00:00:00"/>
-    <button onclick="saveDate()">Enregistrer</button>
-    <button onclick="resetDate()">Réinitialiser</button>
+    <input type="text" id="label" placeholder="Ex: Anniversaire 🎂"/>
+    <button id="save">Enregistrer</button>
+    <button id="shareBtn">Créer lien à partager</button>
+    <button id="copyBtn">Copier</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+
+  <div class="tiny">
+    Lien : <code id="share">—</code><br>
+    (Le lien utilise <code>#...</code> : aucune date lisible dans l’URL)
   </div>
 </div>
 
 <script>
+const $ = (id)=>document.getElementById(id);
+const KEY = "dodoTargetV2";
+
 function pad(n){return String(n).padStart(2,"0");}
 
-function getTarget(){
-  const saved = localStorage.getItem("dodoTarget");
-  if(!saved) return null;
-  return new Date(saved);
+// --- Base64url helpers (obfuscation, pas chiffrement)
+function b64urlEncode(str){
+  const b64 = btoa(unescape(encodeURIComponent(str)));
+  return b64.replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+}
+function b64urlDecode(b64url){
+  const b64 = b64url.replace(/-/g,"+").replace(/_/g,"/") + "===".slice((b64url.length + 3) % 4);
+  return decodeURIComponent(escape(atob(b64)));
 }
 
-function saveDate(){
-  const d = document.getElementById("date").value;
-  const t = document.getElementById("time").value || "00:00:00";
-  if(!d) return;
-  const target = new Date(d + "T" + t);
-  localStorage.setItem("dodoTarget", target.toISOString());
+function toISOFromInputs(){
+  const d = $("date").value;
+  let t = $("time").value || "00:00:00";
+  if (t.length === 5) t += ":00";
+  if(!d) return null;
+  const local = new Date(d + "T" + t);
+  return local.toISOString();
+}
+
+function loadFromHash(){
+  const h = (location.hash || "").replace(/^#/, "").trim();
+  if(!h) return null;
+  try{
+    const json = b64urlDecode(h);
+    const obj = JSON.parse(json);
+    if(!obj || !obj.iso) return null;
+    return obj;
+  }catch(e){
+    return null;
+  }
+}
+
+function saveLocal(obj){
+  localStorage.setItem(KEY, JSON.stringify(obj));
+}
+
+function loadLocal(){
+  try{
+    const s = localStorage.getItem(KEY);
+    return s ? JSON.parse(s) : null;
+  }catch(e){ return null; }
+}
+
+function resetAll(){
+  localStorage.removeItem(KEY);
+  // on garde l’URL propre : on enlève le hash
+  history.replaceState(null,"", location.pathname + location.search);
+  $("share").textContent = "—";
   tick();
 }
 
-function resetDate(){
-  localStorage.removeItem("dodoTarget");
-  document.getElementById("dodos").textContent = "—";
-  document.getElementById("hms").textContent = "—";
+function setInputsFromISO(iso){
+  const dt = new Date(iso);
+  const y = dt.getFullYear();
+  const m = pad(dt.getMonth()+1);
+  const d = pad(dt.getDate());
+  const hh = pad(dt.getHours());
+  const mm = pad(dt.getMinutes());
+  const ss = pad(dt.getSeconds());
+  $("date").value = `${y}-${m}-${d}`;
+  $("time").value = `${hh}:${mm}:${ss}`;
+}
+
+function formatRemaining(ms){
+  const sign = ms < 0 ? "-" : "";
+  ms = Math.abs(ms);
+  const totalSec = Math.floor(ms/1000);
+  const s = totalSec % 60;
+  const totalMin = Math.floor(totalSec/60);
+  const m = totalMin % 60;
+  const totalHr = Math.floor(totalMin/60);
+  const h = totalHr % 24;
+  const days = Math.floor(totalHr/24);
+  return { sign, days, h, m, s };
+}
+
+function buildShareLink(obj){
+  const payload = JSON.stringify(obj);
+  const token = b64urlEncode(payload);
+  return location.origin + location.pathname + "#" + token;
+}
+
+function applyUI(obj){
+  const label = (obj && obj.label) ? obj.label : ($("label").value || "Un petit dodo avant…");
+  $("labelTxt").textContent = label;
+  $("title").textContent = `🧸 Dodos • ${label}`;
+}
+
+function getActiveTarget(){
+  // priorité au hash (partage)
+  const fromHash = loadFromHash();
+  if(fromHash) return fromHash;
+
+  // sinon local storage
+  const fromLocal = loadLocal();
+  if(fromLocal) return fromLocal;
+
+  return null;
 }
 
 function tick(){
-  const target = getTarget();
-  if(!target){
-    document.getElementById("dodos").textContent="—";
-    document.getElementById("hms").textContent="choisis une date";
+  const obj = getActiveTarget();
+  applyUI(obj || {label: ""});
+
+  if(!obj || !obj.iso){
+    $("dodos").textContent = "—";
+    $("dodoUnit").textContent = "dodos";
+    $("hms").textContent = "choisis une date";
     return;
   }
 
+  const target = new Date(obj.iso);
   const now = new Date();
-  const ms = target - now;
+  const msLeft = target - now;
 
-  const dodos = ms / 86400000; // 24h exact
-  document.getElementById("dodos").textContent =
-    dodos > 0 ? dodos.toFixed(2) : "0.00";
+  // 1 dodo = 24h EXACT (même durée que heures/minutes)
+  const dodosReal = msLeft / 86400000;
+  const shown = Math.max(0, dodosReal);
 
-  const totalSec = Math.floor(Math.abs(ms)/1000);
-  const s = totalSec % 60;
-  const m = Math.floor(totalSec/60) % 60;
-  const h = Math.floor(totalSec/3600) % 24;
-  const days = Math.floor(totalSec/86400);
+  $("dodos").textContent = shown.toFixed(2);
+  $("dodoUnit").textContent = (shown.toFixed(2) === "1.00") ? "dodo" : "dodos";
 
-  if(ms >= 0){
-    document.getElementById("hms").textContent =
-      days+"j "+pad(h)+":"+pad(m)+":"+pad(s);
-  }else{
-    document.getElementById("hms").textContent =
-      "événement passé";
+  const f = formatRemaining(msLeft);
+  if(msLeft >= 0){
+    $("hms").textContent = `${f.days}j ${pad(f.h)}:${pad(f.m)}:${pad(f.s)}`;
+  } else {
+    $("hms").textContent = `passé`;
   }
 }
 
-setInterval(tick,1000);
-tick();
+// --- Buttons
+$("save").addEventListener("click", ()=>{
+  const iso = toISOFromInputs();
+  if(!iso) return;
+  const obj = { iso, label: $("label").value || "" };
+  saveLocal(obj);
+  // URL reste propre : on enlève hash si présent
+  history.replaceState(null,"", location.pathname + location.search);
+  $("share").textContent = "—";
+  tick();
+});
+
+$("shareBtn").addEventListener("click", ()=>{
+  const iso = toISOFromInputs();
+  if(!iso) return;
+  const obj = { iso, label: $("label").value || "" };
+  const link = buildShareLink(obj);
+  $("share").textContent = link;
+  // on met directement le hash => partage instantané
+  history.replaceState(null,"", link);
+  tick();
+});
+
+$("copyBtn").addEventListener("click", async ()=>{
+  const txt = $("share").textContent;
+  if(!txt || txt === "—") return;
+  try{ await navigator.clipboard.writeText(txt); }
+  catch{ prompt("Copie le lien :", txt); }
+});
+
+$("resetBtn").addEventListener("click", resetAll);
+
+// --- Init
+(function init(){
+  // préremplissage inputs depuis hash ou local
+  const obj = getActiveTarget();
+  if(obj && obj.iso){
+    setInputsFromISO(obj.iso);
+    $("label").value = obj.label || "";
+    // montrer le lien si hash
+    if(location.hash && location.hash.length > 1){
+      $("share").textContent = location.href;
+    }
+  } else {
+    // date = aujourd’hui par défaut
+    const now = new Date();
+    $("date").value = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
 </script>
 </body>
 </html>
