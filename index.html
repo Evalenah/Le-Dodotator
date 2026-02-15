@@ -10,7 +10,7 @@
   h1{margin:0 0 10px;font-size:20px}
   .bubble{display:inline-flex;align-items:center;gap:10px;padding:10px 12px;border:2px solid #111;border-radius:999px;background:#fff7cc;font-weight:800}
   .big{margin:14px 0 6px;font-size:clamp(44px,7vw,72px);font-weight:900;letter-spacing:-1px;line-height:1}
-  .sub{margin:0 0 14px;font-size:14px;opacity:.8}
+  .sub{margin:0 0 14px;font-size:14px;opacity:.85}
   .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:16px;padding:10px 12px;border:2px dashed #111;border-radius:16px;display:inline-block;background:#f6f6f6}
   .line{margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
   input,button{font:inherit;padding:10px 12px;border-radius:14px;border:2px solid #111;background:#fff}
@@ -18,6 +18,8 @@
   button:active{transform:translate(1px,1px);box-shadow:2px 2px 0 #111}
   .tiny{margin-top:12px;font-size:12px;opacity:.75;word-break:break-word}
   code{font-family:ui-monospace,Menlo,Consolas,monospace}
+  .settings{margin-top:12px; padding-top:12px; border-top:2px dotted #111; display:none}
+  .settings.show{display:block}
 </style>
 </head>
 <body>
@@ -26,31 +28,39 @@
   <div class="bubble">✨ <span id="labelTxt">Un petit dodo avant…</span></div>
 
   <div class="big"><span id="dodos">—</span> <span id="dodoUnit">dodos</span></div>
-  <p class="sub">Même durée, version horloge : <span class="mono" id="hms">—</span></p>
+  <p class="sub">⏰ Même durée, version horloge :</p>
+  <div class="mono" id="hms">—</div>
 
   <div class="line">
-    <input type="date" id="date"/>
-    <input type="time" id="time" step="1" value="00:00:00"/>
-    <input type="text" id="label" placeholder="Ex: Anniversaire 🎂"/>
-    <button id="save">Enregistrer</button>
-    <button id="shareBtn">Créer lien à partager</button>
-    <button id="copyBtn">Copier</button>
+    <button id="toggle">⚙️ Réglages</button>
+    <button id="copyBtn">Copier le lien</button>
     <button id="resetBtn">Reset</button>
   </div>
 
-  <div class="tiny">
-    Lien : <code id="share">—</code><br>
-    (Le lien utilise <code>#...</code> : aucune date lisible dans l’URL)
+  <div class="settings" id="settings">
+    <div class="line">
+      <input type="date" id="date"/>
+      <input type="time" id="time" step="1" value="00:00:00"/>
+      <input type="text" id="label" placeholder="Ex: Anniversaire 🎂"/>
+    </div>
+    <div class="line">
+      <button id="save">Enregistrer (local)</button>
+      <button id="shareBtn">Créer lien à partager</button>
+    </div>
+    <div class="tiny">
+      Lien : <code id="share">—</code><br>
+      (Le lien utilise <code>#...</code> : aucune date lisible. Et la page n’affiche jamais la date.)
+    </div>
   </div>
 </div>
 
 <script>
 const $ = (id)=>document.getElementById(id);
-const KEY = "dodoTargetV2";
+const KEY = "dodoTargetV3";
 
 function pad(n){return String(n).padStart(2,"0");}
 
-// --- Base64url helpers (obfuscation, pas chiffrement)
+// Obfuscation via base64url (ce n’est pas du chiffrement)
 function b64urlEncode(str){
   const b64 = btoa(unescape(encodeURIComponent(str)));
   return b64.replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
@@ -65,6 +75,7 @@ function toISOFromInputs(){
   let t = $("time").value || "00:00:00";
   if (t.length === 5) t += ":00";
   if(!d) return null;
+  // Interprétation en heure locale du navigateur
   const local = new Date(d + "T" + t);
   return local.toISOString();
 }
@@ -77,44 +88,29 @@ function loadFromHash(){
     const obj = JSON.parse(json);
     if(!obj || !obj.iso) return null;
     return obj;
-  }catch(e){
-    return null;
-  }
-}
-
-function saveLocal(obj){
-  localStorage.setItem(KEY, JSON.stringify(obj));
-}
-
-function loadLocal(){
-  try{
-    const s = localStorage.getItem(KEY);
-    return s ? JSON.parse(s) : null;
   }catch(e){ return null; }
+}
+
+function saveLocal(obj){ localStorage.setItem(KEY, JSON.stringify(obj)); }
+function loadLocal(){
+  try{ const s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; }
+  catch(e){ return null; }
 }
 
 function resetAll(){
   localStorage.removeItem(KEY);
-  // on garde l’URL propre : on enlève le hash
-  history.replaceState(null,"", location.pathname + location.search);
+  history.replaceState(null,"", location.pathname + location.search); // URL propre sans hash
   $("share").textContent = "—";
   tick();
 }
 
 function setInputsFromISO(iso){
   const dt = new Date(iso);
-  const y = dt.getFullYear();
-  const m = pad(dt.getMonth()+1);
-  const d = pad(dt.getDate());
-  const hh = pad(dt.getHours());
-  const mm = pad(dt.getMinutes());
-  const ss = pad(dt.getSeconds());
-  $("date").value = `${y}-${m}-${d}`;
-  $("time").value = `${hh}:${mm}:${ss}`;
+  $("date").value = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}`;
+  $("time").value = `${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
 }
 
 function formatRemaining(ms){
-  const sign = ms < 0 ? "-" : "";
   ms = Math.abs(ms);
   const totalSec = Math.floor(ms/1000);
   const s = totalSec % 60;
@@ -123,13 +119,16 @@ function formatRemaining(ms){
   const totalHr = Math.floor(totalMin/60);
   const h = totalHr % 24;
   const days = Math.floor(totalHr/24);
-  return { sign, days, h, m, s };
+  return { days, h, m, s };
 }
 
 function buildShareLink(obj){
-  const payload = JSON.stringify(obj);
-  const token = b64urlEncode(payload);
+  const token = b64urlEncode(JSON.stringify(obj));
   return location.origin + location.pathname + "#" + token;
+}
+
+function getActiveTarget(){
+  return loadFromHash() || loadLocal();
 }
 
 function applyUI(obj){
@@ -138,26 +137,14 @@ function applyUI(obj){
   $("title").textContent = `🧸 Dodos • ${label}`;
 }
 
-function getActiveTarget(){
-  // priorité au hash (partage)
-  const fromHash = loadFromHash();
-  if(fromHash) return fromHash;
-
-  // sinon local storage
-  const fromLocal = loadLocal();
-  if(fromLocal) return fromLocal;
-
-  return null;
-}
-
 function tick(){
   const obj = getActiveTarget();
-  applyUI(obj || {label: ""});
+  applyUI(obj || {label:""});
 
   if(!obj || !obj.iso){
     $("dodos").textContent = "—";
     $("dodoUnit").textContent = "dodos";
-    $("hms").textContent = "choisis une date";
+    $("hms").textContent = "choisis une date (dans Réglages)";
     return;
   }
 
@@ -165,28 +152,31 @@ function tick(){
   const now = new Date();
   const msLeft = target - now;
 
-  // 1 dodo = 24h EXACT (même durée que heures/minutes)
-  const dodosReal = msLeft / 86400000;
-  const shown = Math.max(0, dodosReal);
+  // 1 dodo = 24h EXACT => cohérent avec heures/minutes
+  const shown = Math.max(0, msLeft / 86400000);
 
   $("dodos").textContent = shown.toFixed(2);
   $("dodoUnit").textContent = (shown.toFixed(2) === "1.00") ? "dodo" : "dodos";
 
-  const f = formatRemaining(msLeft);
   if(msLeft >= 0){
+    const f = formatRemaining(msLeft);
     $("hms").textContent = `${f.days}j ${pad(f.h)}:${pad(f.m)}:${pad(f.s)}`;
   } else {
-    $("hms").textContent = `passé`;
+    $("hms").textContent = "passé";
   }
 }
 
-// --- Buttons
+// UI actions
+$("toggle").addEventListener("click", ()=>{
+  $("settings").classList.toggle("show");
+});
+
 $("save").addEventListener("click", ()=>{
   const iso = toISOFromInputs();
   if(!iso) return;
   const obj = { iso, label: $("label").value || "" };
   saveLocal(obj);
-  // URL reste propre : on enlève hash si présent
+  // URL reste propre (on enlève le hash si présent)
   history.replaceState(null,"", location.pathname + location.search);
   $("share").textContent = "—";
   tick();
@@ -198,33 +188,30 @@ $("shareBtn").addEventListener("click", ()=>{
   const obj = { iso, label: $("label").value || "" };
   const link = buildShareLink(obj);
   $("share").textContent = link;
-  // on met directement le hash => partage instantané
-  history.replaceState(null,"", link);
+  history.replaceState(null,"", link); // met le hash
   tick();
 });
 
 $("copyBtn").addEventListener("click", async ()=>{
-  const txt = $("share").textContent;
-  if(!txt || txt === "—") return;
-  try{ await navigator.clipboard.writeText(txt); }
-  catch{ prompt("Copie le lien :", txt); }
+  // si le hash existe, copie l’URL complète actuelle, sinon copie celle affichée si dispo
+  const url = (location.hash && location.hash.length > 1) ? location.href : $("share").textContent;
+  if(!url || url === "—") return;
+  try{ await navigator.clipboard.writeText(url); }
+  catch{ prompt("Copie le lien :", url); }
 });
 
 $("resetBtn").addEventListener("click", resetAll);
 
-// --- Init
+// Init
 (function init(){
-  // préremplissage inputs depuis hash ou local
   const obj = getActiveTarget();
   if(obj && obj.iso){
     setInputsFromISO(obj.iso);
     $("label").value = obj.label || "";
-    // montrer le lien si hash
     if(location.hash && location.hash.length > 1){
       $("share").textContent = location.href;
     }
   } else {
-    // date = aujourd’hui par défaut
     const now = new Date();
     $("date").value = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
   }
