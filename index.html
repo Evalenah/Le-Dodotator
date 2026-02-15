@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Dodos ⏳</title>
+  <style>
+    :root { color-scheme: light; }
+    body{
+      margin:0; min-height:100vh;
+      display:grid; place-items:center;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: #fff;
+    }
+    .card{
+      width: min(720px, calc(100% - 28px));
+      border: 2px solid #111;
+      border-radius: 22px;
+      padding: 22px;
+      box-shadow: 6px 6px 0 #111;
+    }
+    h1{
+      margin: 0 0 6px;
+      font-size: 20px;
+      letter-spacing: .2px;
+    }
+    .bubble{
+      display:inline-flex;
+      align-items:center;
+      gap:10px;
+      padding: 10px 12px;
+      border: 2px solid #111;
+      border-radius: 999px;
+      background: #fff7cc;
+      font-weight: 700;
+    }
+    .big{
+      margin: 14px 0 6px;
+      font-size: clamp(44px, 7vw, 72px);
+      font-weight: 900;
+      letter-spacing: -1px;
+      line-height: 1;
+    }
+    .sub{
+      margin: 0 0 14px;
+      font-size: 14px;
+      opacity: .8;
+    }
+    .line{
+      display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+      margin-top: 10px;
+    }
+    input, button{
+      font: inherit;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 2px solid #111;
+      background: #fff;
+    }
+    button{ cursor:pointer; box-shadow: 3px 3px 0 #111; }
+    button:active{ transform: translate(1px,1px); box-shadow: 2px 2px 0 #111; }
+    .tiny{
+      margin-top: 12px;
+      font-size: 12px;
+      opacity: .75;
+      word-break: break-word;
+    }
+    code{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    .mono{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 16px;
+      padding: 10px 12px;
+      border: 2px dashed #111;
+      border-radius: 16px;
+      display:inline-block;
+      background: #f6f6f6;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1 id="title">Compte à rebours en dodos</h1>
+    <div class="bubble">🧸 <span id="labelTxt">Un petit dodo avant…</span></div>
+
+    <div class="big"><span id="dodos">—</span> <span id="dodoUnit">dodos</span></div>
+    <p class="sub">⏰ Même durée, vue autrement : <span class="mono" id="hms">—</span></p>
+
+    <div class="line">
+      <input id="date" type="date" />
+      <input id="time" type="time" step="1" value="00:00:00" />
+      <input id="label" type="text" placeholder="Ex: Anniversaire 🎂" />
+      <button id="make">Générer l’URL</button>
+      <button id="copy">Copier l’URL</button>
+    </div>
+
+    <div class="tiny">
+      URL : <code id="share">—</code><br>
+      Paramètres : <code>?to=YYYY-MM-DD</code> + <code>&at=HH:MM:SS</code> (optionnel) + <code>&label=...</code> (optionnel)
+    </div>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  function params() {
+    const p = new URLSearchParams(location.search);
+    return {
+      to: p.get("to") || "",
+      at: p.get("at") || "00:00:00",
+      label: p.get("label") ? decodeURIComponent(p.get("label")) : ""
+    };
+  }
+
+  function pad2(n){ return String(n).padStart(2,"0"); }
+
+  // Interprétation simple & robuste: on utilise l'heure locale du navigateur.
+  // to=YYYY-MM-DD + at=HH:MM:SS => date cible locale.
+  function targetDate(toYMD, atHMS) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(toYMD)) return null;
+    if (!/^\d{2}:\d{2}(:\d{2})?$/.test(atHMS)) atHMS = "00:00:00";
+    if (atHMS.length === 5) atHMS += ":00";
+    const [y,m,d] = toYMD.split("-").map(Number);
+    const [hh,mm,ss] = atHMS.split(":").map(Number);
+    return new Date(y, m-1, d, hh, mm, ss, 0);
+  }
+
+  function formatHMS(ms) {
+    const sign = ms < 0 ? "-" : "";
+    ms = Math.abs(ms);
+
+    const totalSeconds = Math.floor(ms / 1000);
+    const s = totalSeconds % 60;
+    const totalMinutes = Math.floor(totalSeconds / 60);
+    const m = totalMinutes % 60;
+    const totalHours = Math.floor(totalMinutes / 60);
+    const h = totalHours % 24;
+    const days = Math.floor(totalHours / 24);
+
+    return { sign, days, h, m, s };
+  }
+
+  function buildShareUrl(to, at, label) {
+    const u = new URL(location.href);
+    u.search = "";
+    const p = new URLSearchParams();
+    if (to) p.set("to", to);
+    if (at && at !== "00:00:00") p.set("at", at);
+    if (label) p.set("label", label);
+    u.search = p.toString();
+    return u.toString();
+  }
+
+  function tick() {
+    const { to, at, label } = params();
+    const t = targetDate(to || $("date").value, at || $("time").value);
+
+    const lbl = label || $("label").value || "Un petit dodo avant…";
+    $("labelTxt").textContent = lbl;
+    $("title").textContent = label ? `Dodos • ${lbl}` : "Compte à rebours en dodos";
+
+    const share = buildShareUrl($("date").value, $("time").value, $("label").value);
+    $("share").textContent = share;
+
+    if (!t) {
+      $("dodos").textContent = "—";
+      $("hms").textContent = "choisis une date";
+      return;
+    }
+
+    const now = new Date();
+    const msLeft = t.getTime() - now.getTime();
+
+    // Dodos temps réel: 1 dodo = 24h = 86 400 000 ms
+    const dodosReal = msLeft / 86400000;
+
+    // Affichage: 2 décimales (tu peux passer à 3 si tu veux)
+    const dodosShown = Math.max(0, dodosReal);
+    $("dodos").textContent = dodosShown.toFixed(2);
+    $("dodoUnit").textContent = (dodosShown.toFixed(2) === "1.00") ? "dodo" : "dodos";
+
+    const f = formatHMS(msLeft);
+    if (msLeft >= 0) {
+      $("hms").textContent = `${f.days}j ${pad2(f.h)}:${pad2(f.m)}:${pad2(f.s)}`;
+    } else {
+      $("hms").textContent = `passé de ${f.days}j ${pad2(f.h)}:${pad2(f.m)}:${pad2(f.s)}`;
+    }
+  }
+
+  function initFromUrl() {
+    const p = params();
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = pad2(today.getMonth()+1);
+    const d = pad2(today.getDate());
+
+    $("date").value = p.to || `${y}-${m}-${d}`;
+    $("time").value = (p.at && p.at.length === 5) ? (p.at + ":00") : (p.at || "00:00:00");
+    $("label").value = p.label || "";
+    $("share").textContent = buildShareUrl($("date").value, $("time").value, $("label").value);
+  }
+
+  $("make").addEventListener("click", () => {
+    const url = buildShareUrl($("date").value, $("time").value, $("label").value);
+    history.replaceState(null, "", url);
+    tick();
+  });
+
+  $("copy").addEventListener("click", async () => {
+    const txt = $("share").textContent;
+    try { await navigator.clipboard.writeText(txt); }
+    catch { prompt("Copie l’URL :", txt); }
+  });
+
+  initFromUrl();
+  tick();
+  setInterval(tick, 1000);
+</script>
+</body>
+</html>
